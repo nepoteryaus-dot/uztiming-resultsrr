@@ -18,9 +18,9 @@
   .top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
   h1{font-size:17px;margin:0;font-weight:700}
   h1 .sub{color:var(--dim);font-weight:400;font-size:13px;margin-left:8px}
-  #pick{background:#fff;color:var(--txt);border:1px solid var(--line);
+  #pick,#groupby{background:#fff;color:var(--txt);border:1px solid var(--line);
     border-radius:8px;padding:9px 10px;font-size:14px;outline:none;cursor:pointer}
-  #pick:hover{border-color:var(--accent)}
+  #pick:hover,#groupby:hover{border-color:var(--accent)}
   .search{flex:1;min-width:200px;max-width:380px;display:flex;align-items:center;
     background:#fff;border:1px solid var(--line);border-radius:8px;padding:0 10px}
   .search input{flex:1;background:none;border:0;color:var(--txt);font-size:15px;padding:10px 8px;outline:none}
@@ -59,7 +59,7 @@
       <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
       <input id="q" type="search" placeholder="Поиск по фамилии, нагруднику…" autocomplete="off">
     </label>
-    <label class="chk" id="grpwrap" style="display:none"><input type="checkbox" id="grp" checked> по полу</label>
+    <select id="groupby" title="Группировка" style="display:none"></select>
     <span class="meta" id="count"></span>
   </div>
 </header>
@@ -128,7 +128,7 @@ function showView(v){
 
 function liveChrome(on){
   document.querySelector(".search").style.display = on?"none":"";
-  if(on) document.getElementById("grpwrap").style.display="none";
+  if(on){ const gb=document.getElementById("groupby"); if(gb) gb.style.display="none"; }
   document.querySelector(".wrap").style.display = on?"none":"";
   const live=document.getElementById("live");
   live.style.display = on?"block":"none";
@@ -218,11 +218,13 @@ function render(){
     th.innerHTML=h+' <span class="ar"></span>';
     th.onclick=()=>{ SORT.dir=SORT.col===i?-SORT.dir:1; SORT.col=i; draw(); };
     head.appendChild(th); });
-  const gw=document.getElementById("grpwrap");
-  gw.style.display=GENDER>=0?"flex":"none";
-  document.getElementById("grp").checked=GENDER>=0;
+  const gb=document.getElementById("groupby");
+  gb.innerHTML='<option value="-1">Без группировки</option>'+
+    HEAD.map((h,i)=>'<option value="'+i+'">по: '+esc(h)+'</option>').join("");
+  gb.value = GENDER>=0 ? String(GENDER) : "-1";
+  gb.style.display="";
+  gb.onchange=draw;
   document.getElementById("q").oninput=draw;
-  document.getElementById("grp").onchange=draw;
   draw();
 }
 
@@ -246,18 +248,27 @@ function draw(){
 
   const body=document.getElementById("body"); body.innerHTML="";
   const frag=document.createDocumentFragment();
-  const grouping=GENDER>=0 && document.getElementById("grp").checked;
+  const gCol = +(document.getElementById("groupby").value);   // -1 = без группировки
 
-  if(grouping){
+  if(gCol>=0){
     const g={};
-    rows.forEach(r=>{ const gi=genInfo(r[GENDER]); const k=gi.o+"|"+gi.t;
-      (g[k]=g[k]||{o:gi.o,t:gi.t,rows:[]}).rows.push(r); });
-    Object.values(g).sort((a,b)=>a.o-b.o||a.t.localeCompare(b.t,"ru"))
-      .forEach(gr=>{ gr.rows.sort(cmp);
-        const tr=document.createElement("tr"); tr.className="grp";
-        const td=document.createElement("td"); td.colSpan=HEAD.length;
-        td.innerHTML=gr.t+' <span>'+gr.rows.length+'</span>'; tr.appendChild(td); frag.appendChild(tr);
-        gr.rows.forEach(r=>frag.appendChild(rowEl(r,q))); });
+    rows.forEach(r=>{
+      const raw=String(r[gCol]??"").trim();
+      let key,label,ord;
+      if(gCol===GENDER){ const gi=genInfo(raw); key=gi.o+"|"+gi.t; label=gi.t; ord=gi.o; }
+      else { label=raw||"—"; key=label; ord=null; }
+      (g[key]=g[key]||{label,ord,raw,rows:[]}).rows.push(r);
+    });
+    Object.values(g).sort((a,b)=>{
+      if(a.ord!=null||b.ord!=null) return (a.ord??99)-(b.ord??99);
+      const ae=a.label==="—", be=b.label==="—"; if(ae!==be) return ae?1:-1;   // пусто вниз
+      if(isNum(a.raw)&&isNum(b.raw)) return numKey(a.raw)-numKey(b.raw);        // числа по возр.
+      return a.label.localeCompare(b.label,"ru");
+    }).forEach(gr=>{ gr.rows.sort(cmp);
+      const tr=document.createElement("tr"); tr.className="grp";
+      const td=document.createElement("td"); td.colSpan=HEAD.length;
+      td.innerHTML=esc(gr.label)+' <span>'+gr.rows.length+'</span>'; tr.appendChild(td); frag.appendChild(tr);
+      gr.rows.forEach(r=>frag.appendChild(rowEl(r,q))); });
   } else {
     rows.sort(cmp); rows.forEach(r=>frag.appendChild(rowEl(r,q)));
   }
