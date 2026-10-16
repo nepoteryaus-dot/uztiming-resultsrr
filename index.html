@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Результаты — UZTiming</title>
+<style>
+  :root{
+    --bg:#ffffff; --panel:#ffffff; --line:#e6e6e6; --txt:#111111;
+    --dim:#777777; --accent:#e8452c; --rowalt:#f7f7f7; --hover:#fff3f0;
+    --grp:#f0f0f0; --mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:15px}
+  header{position:sticky;top:0;z-index:5;background:var(--panel);
+    border-bottom:2px solid var(--accent);padding:12px 16px}
+  .top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+  h1{font-size:17px;margin:0;font-weight:700}
+  h1 .sub{color:var(--dim);font-weight:400;font-size:13px;margin-left:8px}
+  #pick{background:#fff;color:var(--txt);border:1px solid var(--line);
+    border-radius:8px;padding:9px 10px;font-size:14px;outline:none;cursor:pointer}
+  #pick:hover{border-color:var(--accent)}
+  .search{flex:1;min-width:200px;max-width:380px;display:flex;align-items:center;
+    background:#fff;border:1px solid var(--line);border-radius:8px;padding:0 10px}
+  .search input{flex:1;background:none;border:0;color:var(--txt);font-size:15px;padding:10px 8px;outline:none}
+  .search svg{width:16px;height:16px;fill:var(--dim);flex:none}
+  .chk{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:14px;cursor:pointer;user-select:none}
+  .meta{color:var(--dim);font-size:13px;white-space:nowrap}
+  .live-badge{color:#fff;background:var(--accent);border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700;letter-spacing:.5px}
+  .wrap{overflow:auto}
+  #live{display:none}
+  #live iframe{width:100%;height:calc(100vh - 62px);border:0;display:block;background:#fff}
+  table{border-collapse:collapse;width:100%;min-width:600px}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  thead th{position:sticky;top:0;background:#fafafa;color:var(--dim);
+    font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.4px;
+    cursor:pointer;user-select:none;z-index:2;border-bottom:1px solid var(--line)}
+  thead th:hover{color:var(--txt)}
+  thead th .ar{color:var(--accent);margin-left:4px;font-size:10px}
+  tbody tr:nth-child(even):not(.grp){background:var(--rowalt)}
+  tbody tr:hover:not(.grp){background:var(--hover)}
+  tr.grp td{background:var(--grp);font-weight:700;font-size:13px;
+    text-transform:uppercase;letter-spacing:.5px;border-left:3px solid var(--accent)}
+  tr.grp td span{color:var(--dim);font-weight:400;margin-left:8px}
+  td.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  mark{background:var(--accent);color:#fff;border-radius:2px;padding:0 1px}
+  .empty{padding:40px 16px;text-align:center;color:var(--dim)}
+  footer{padding:14px 16px;color:var(--dim);font-size:12px;border-top:1px solid var(--line)}
+  @media(max-width:600px){ th,td{padding:8px 9px} h1{font-size:15px} }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <h1 id="title">Результаты<span class="sub" id="subtitle"></span></h1>
+    <select id="pick"></select>
+    <label class="search">
+      <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+      <input id="q" type="search" placeholder="Поиск по фамилии, нагруднику…" autocomplete="off">
+    </label>
+    <label class="chk" id="grpwrap" style="display:none"><input type="checkbox" id="grp" checked> по полу</label>
+    <span class="meta" id="count"></span>
+  </div>
+</header>
+
+<div class="wrap">
+  <table id="tbl"><thead><tr id="head"></tr></thead><tbody id="body"></tbody></table>
+  <div class="empty" id="empty" style="display:none"></div>
+</div>
+<div id="live"></div>
+
+<footer id="foot">UZTiming — chip timing</footer>
+
+<script>
+let ROWS=[], HEAD=[], SORT={col:0,dir:1};
+let GENDER=-1, DEFCOL=0, MANIFEST=null;
+const pick=document.getElementById("pick");
+
+function getEvent(){
+  const q=new URLSearchParams(location.search).get("e");
+  if(q) return q;
+  const parts=location.pathname.split("/").filter(Boolean);
+  const last=parts[parts.length-1]||"";
+  if(last && !/\.(html?|php)$/i.test(last) && last!=="resultsrr") return last;
+  return null;
+}
+const EVENT=getEvent();
+
+// грузим манифест; если файл назван в другом регистре — пробуем нижний регистр
+function loadManifest(slug){
+  const url=s=>"data/"+s+".manifest.json";
+  return fetch(url(slug),{cache:"no-store"}).then(r=>{
+    if(r.ok) return r.json();
+    if(slug!==slug.toLowerCase())
+      return fetch(url(slug.toLowerCase()),{cache:"no-store"}).then(r2=>{ if(!r2.ok) throw new Error(r2.status); return r2.json(); });
+    throw new Error(r.status);
+  });
+}
+
+if(!EVENT){ show("Старт не указан. Ссылка вида …/resultsrr/?e=<slug>"); pick.style.display="none"; }
+else loadManifest(EVENT)
+  .then(m=>{
+    MANIFEST=m;
+    document.getElementById("subtitle").textContent=m.title||"";
+    document.title=(m.title||"Результаты")+" — UZTiming";
+
+    const liveAvail = m.mode==="live" && (m.embed||"").trim()!=="";
+    const lists = m.lists||[];
+    const opts = [];
+    if(liveAvail) opts.push({label:"🔴 LIVE", file:"__live__"});
+    lists.forEach(l=>opts.push({label:l.label, file:l.file}));
+
+    opts.forEach(o=>{ const el=document.createElement("option"); el.value=o.file; el.textContent=o.label; pick.appendChild(el); });
+    pick.style.display = opts.length>1 ? "" : "none";
+    pick.onchange=()=>showView(pick.value);
+
+    let def = liveAvail ? "__live__" : (lists[0] ? lists[0].file : (opts[0] ? opts[0].file : null));
+    if(def){ pick.value=def; showView(def); }
+    else show("Нет отчётов для этого старта");
+  })
+  .catch(()=>show("Старт не найден ("+EVENT+"). Проверьте ссылку."));
+
+function showView(v){
+  if(v==="__live__"){ liveChrome(true); renderLive(MANIFEST); }
+  else { liveChrome(false); load(v); }
+}
+
+function liveChrome(on){
+  document.querySelector(".search").style.display = on?"none":"";
+  if(on) document.getElementById("grpwrap").style.display="none";
+  document.querySelector(".wrap").style.display = on?"none":"";
+  const live=document.getElementById("live");
+  live.style.display = on?"block":"none";
+  if(!on){ live.innerHTML=""; }        // выходя из LIVE — гасим виджет
+}
+
+function renderLive(m){
+  document.getElementById("count").innerHTML='<span class="live-badge">LIVE</span>';
+  const box=document.getElementById("live");
+  const emb=(m.embed||"").trim();
+  box.innerHTML="";
+  if(!emb){ box.innerHTML='<div class="empty">Live-режим включён, но код вставки RR не задан.</div>'; return; }
+  if(/<script|RRPublish/i.test(emb)){           // скриптовый виджет RR -> выполняем в самой странице
+    injectEmbed(box, emb);
+  } else if(emb[0]==="<"){ box.innerHTML=emb; }  // готовый <iframe> код
+  else { const f=document.createElement("iframe"); f.src=emb; f.setAttribute("allowfullscreen",""); box.appendChild(f); }
+}
+
+// вставляет HTML с <script> так, что скрипты РЕАЛЬНО выполняются (верхний документ, настоящий origin)
+function injectEmbed(container, html){
+  const tpl=document.createElement("template"); tpl.innerHTML=html;
+  const scripts=[];
+  [...tpl.content.childNodes].forEach(n=>{
+    if(n.nodeType===1 && n.tagName==="SCRIPT") scripts.push(n);
+    else container.appendChild(n.cloneNode(true));
+  });
+  (function run(i){
+    if(i>=scripts.length) return;
+    const o=scripts[i], s=document.createElement("script");
+    for(const a of o.attributes) s.setAttribute(a.name, a.value);
+    if(o.src){ s.onload=()=>run(i+1); s.onerror=()=>run(i+1); container.appendChild(s); }
+    else { s.textContent=o.textContent; container.appendChild(s); run(i+1); }
+  })(0);
+}
+
+function load(file){
+  document.getElementById("q").value="";
+  fetch("data/"+file,{cache:"no-store"})
+    .then(r=>{ if(!r.ok) throw new Error(r.status); return r.json(); })
+    .then(parse).then(render)
+    .catch(e=>show("Не удалось загрузить "+file+" ("+e.message+")"));
+}
+
+function parse(j){
+  if(Array.isArray(j)){ ROWS=[]; HEAD=[];
+    if(j.length){ HEAD=Object.keys(j[0]); ROWS=j.map(o=>HEAD.map(k=>o[k]??"")); } return; }
+  const list=j.list||j.List||{}, fields=list.Fields||list.fields||[];
+  HEAD=fields.length?fields.map(f=>f.Label ?? f.label ?? f.Expression ?? f.Name ?? ""):[];
+  let data=j.data ?? j.Data ?? [];
+  if(data && !Array.isArray(data)) data=Object.values(data).flat();
+  ROWS=(data||[]).filter(r=>Array.isArray(r));
+  if(!HEAD.length && ROWS.length) HEAD=ROWS[0].map((_,i)=>"Кол."+(i+1));
+}
+
+function findCol(re){ return HEAD.findIndex(h=>re.test(String(h))); }
+function detect(){
+  GENDER=findCol(/^(sex|gender|пол|malefemale|m\/?f)$/i);
+  if(GENDER<0) GENDER=findCol(/sex|gender|пол/i);
+  if(GENDER<0){
+    for(let i=0;i<HEAD.length;i++){
+      const vals=[...new Set(ROWS.map(r=>String(r[i]).trim().toLowerCase()).filter(Boolean))];
+      if(vals.length && vals.length<=4 && vals.every(v=>/^(m|f|w|м|ж|male|female|муж|жен)$/.test(v))){ GENDER=i; break; }
+    }
+  }
+  let c=findCol(/rank|место|place|поз|pos/i);
+  if(c<0) c=findCol(/result|результат|finish|финиш|chip|gun|time|время|итог/i);
+  DEFCOL=c<0?0:c;
+}
+
+function genInfo(v){ v=String(v).trim().toLowerCase();
+  if(["m","male","муж","м","man","men"].includes(v)) return {o:0,t:"Мужчины"};
+  if(["f","w","female","жен","ж","woman","women"].includes(v)) return {o:1,t:"Женщины"};
+  return {o:2,t:(String(v)||"—")}; }
+
+const STATUS=/^(dns|dnf|dsq|dq|lap|nc|dnc)$/i;
+function isStatus(s){ return STATUS.test(String(s).trim().replace(/[.\s]+$/,"")); }
+function rowStatus(r){ return r.some(c=>isStatus(c)); }
+function isNum(s){ s=String(s).trim().replace(/\.$/,""); return /^-?[\d:.,]+$/.test(s) && /\d/.test(s); }
+function numKey(s){ s=String(s).trim().replace(/\.$/,"");
+  if(s.includes(":")){ const p=s.split(":").map(Number); return p.reduce((a,b)=>a*60+(b||0),0); }
+  return parseFloat(s.replace(",","."))||0; }
+
+function render(){
+  detect(); SORT={col:DEFCOL,dir:1};
+  const head=document.getElementById("head"); head.innerHTML="";
+  HEAD.forEach((h,i)=>{ const th=document.createElement("th");
+    th.innerHTML=h+' <span class="ar"></span>';
+    th.onclick=()=>{ SORT.dir=SORT.col===i?-SORT.dir:1; SORT.col=i; draw(); };
+    head.appendChild(th); });
+  const gw=document.getElementById("grpwrap");
+  gw.style.display=GENDER>=0?"flex":"none";
+  document.getElementById("grp").checked=GENDER>=0;
+  document.getElementById("q").oninput=draw;
+  document.getElementById("grp").onchange=draw;
+  draw();
+}
+
+function cmp(a,b){
+  const c=SORT.col;
+  const sa=rowStatus(a), sb=rowStatus(b);
+  if(sa!==sb) return sa?1:-1;
+  const x=a[c]??"", y=b[c]??"";
+  if(sa) return String(x).localeCompare(String(y),"ru");
+  const ex=String(x).trim()==="", ey=String(y).trim()==="";
+  if(ex!==ey) return ex?1:-1;
+  if(ex&&ey) return 0;
+  if(isNum(x)&&isNum(y)) return (numKey(x)-numKey(y))*SORT.dir;
+  return String(x).localeCompare(String(y),"ru")*SORT.dir;
+}
+
+function draw(){
+  const q=document.getElementById("q").value.trim().toLowerCase();
+  let rows=q?ROWS.filter(r=>r.some(c=>String(c).toLowerCase().includes(q))):ROWS.slice();
+  document.querySelectorAll("#head .ar").forEach((el,i)=> el.textContent=i===SORT.col?(SORT.dir>0?"▲":"▼"):"");
+
+  const body=document.getElementById("body"); body.innerHTML="";
+  const frag=document.createDocumentFragment();
+  const grouping=GENDER>=0 && document.getElementById("grp").checked;
+
+  if(grouping){
+    const g={};
+    rows.forEach(r=>{ const gi=genInfo(r[GENDER]); const k=gi.o+"|"+gi.t;
+      (g[k]=g[k]||{o:gi.o,t:gi.t,rows:[]}).rows.push(r); });
+    Object.values(g).sort((a,b)=>a.o-b.o||a.t.localeCompare(b.t,"ru"))
+      .forEach(gr=>{ gr.rows.sort(cmp);
+        const tr=document.createElement("tr"); tr.className="grp";
+        const td=document.createElement("td"); td.colSpan=HEAD.length;
+        td.innerHTML=gr.t+' <span>'+gr.rows.length+'</span>'; tr.appendChild(td); frag.appendChild(tr);
+        gr.rows.forEach(r=>frag.appendChild(rowEl(r,q))); });
+  } else {
+    rows.sort(cmp); rows.forEach(r=>frag.appendChild(rowEl(r,q)));
+  }
+  body.appendChild(frag);
+
+  document.getElementById("count").textContent=rows.length+" из "+ROWS.length;
+  document.getElementById("empty").style.display=rows.length?"none":"block";
+  if(!rows.length) document.getElementById("empty").textContent="Ничего не найдено";
+}
+
+function rowEl(r,q){ const tr=document.createElement("tr");
+  r.forEach(cell=>{ const td=document.createElement("td");
+    if(isNum(cell)) td.className="num";
+    td.innerHTML=q?hl(String(cell),q):esc(String(cell)); tr.appendChild(td); });
+  return tr; }
+
+function esc(s){ return s.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+function hl(s,q){ const i=s.toLowerCase().indexOf(q); if(i<0) return esc(s);
+  return esc(s.slice(0,i))+"<mark>"+esc(s.slice(i,i+q.length))+"</mark>"+esc(s.slice(i+q.length)); }
+function show(msg){ const e=document.getElementById("empty"); e.style.display="block"; e.textContent=msg;
+  document.querySelector(".wrap").style.display=""; document.getElementById("live").style.display="none"; }
+</script>
+</body>
+</html>
