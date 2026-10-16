@@ -1,0 +1,9 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
+<title>Результаты — UZTiming</title>
+<script>
+  // красивый путь /<slug> -> /?e=<slug> (GitHub Pages не умеет rewrite, делаем через 404)
+  var p = location.pathname.replace(/^\/+/,"").replace(/\/+$/,"");
+  var params = new URLSearchParams(location.search);
+  if (p) params.set("e", p);
+  location.replace("/?" + params.toString() + location.hash);
+</script></head><body>Переход…</body></html>
