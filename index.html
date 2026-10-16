@@ -86,6 +86,8 @@
 let ROWS=[], HEAD=[], SORT={col:0,dir:1};
 let GENDER=-1, DEFCOL=0, MANIFEST=null;
 const pick=document.getElementById("pick");
+const ADMIN = new URLSearchParams(location.search).get("admin")==="1";  // меню группировки видно только с ?admin=1
+let DEFGROUP=[];                                                         // группировка по умолчанию из манифеста (имена колонок)
 
 function getEvent(){
   const q=new URLSearchParams(location.search).get("e");
@@ -112,6 +114,7 @@ if(!EVENT){ show("Старт не указан. Ссылка вида …/result
 else loadManifest(EVENT)
   .then(m=>{
     MANIFEST=m;
+    DEFGROUP = Array.isArray(m.group) ? m.group : [];
     document.getElementById("subtitle").textContent=m.title||"";
     document.title=(m.title||"Результаты")+" — UZTiming";
 
@@ -138,8 +141,8 @@ function showView(v){
 
 function liveChrome(on){
   document.querySelector(".search").style.display = on?"none":"";
-  if(on){ const gb=document.getElementById("grpbox"); if(gb) gb.style.display="none"; }
-  else { const gb=document.getElementById("grpbox"); if(gb && HEAD.length) gb.style.display=""; }
+  const gb=document.getElementById("grpbox");
+  if(gb) gb.style.display = (!on && ADMIN) ? "" : "none";   // меню группировки — только админу и не в LIVE
   document.querySelector(".wrap").style.display = on?"none":"";
   const live=document.getElementById("live");
   live.style.display = on?"block":"none";
@@ -228,8 +231,14 @@ function render(){
   detect(); SORT={col:DEFCOL,dir:1};
   const opts='<option value="-1">— нет —</option>'+HEAD.map((h,i)=>'<option value="'+i+'">'+esc(h)+'</option>').join("");
   [g1(),g2(),g3()].forEach(s=>{ s.innerHTML=opts; s.value="-1"; s.onchange=onGroup; });
-  g1().value = GENDER>=0 ? String(GENDER) : "-1";          // по умолчанию — по полу, если есть
-  document.getElementById("grpbox").style.display="";
+  // применяем группировку из манифеста (имена колонок), иначе — по полу
+  const byName = n => HEAD.findIndex(h=>String(h).toLowerCase()===String(n).toLowerCase());
+  let lv = DEFGROUP.map(byName).filter(i=>i>=0);
+  if(!lv.length && GENDER>=0) lv=[GENDER];
+  if(lv[0]!=null) g1().value=String(lv[0]);
+  if(lv[1]!=null) g2().value=String(lv[1]);
+  if(lv[2]!=null) g3().value=String(lv[2]);
+  document.getElementById("grpbox").style.display = ADMIN ? "" : "none";   // зрителям меню не показываем
   syncLevels();
   document.getElementById("q").oninput=draw;
   draw();
