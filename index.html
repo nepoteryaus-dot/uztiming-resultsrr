@@ -18,9 +18,11 @@
   .top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
   h1{font-size:17px;margin:0;font-weight:700}
   h1 .sub{color:var(--dim);font-weight:400;font-size:13px;margin-left:8px}
-  #pick,#groupby{background:#fff;color:var(--txt);border:1px solid var(--line);
+  #pick,.gsel{background:#fff;color:var(--txt);border:1px solid var(--line);
     border-radius:8px;padding:9px 10px;font-size:14px;outline:none;cursor:pointer}
-  #pick:hover,#groupby:hover{border-color:var(--accent)}
+  #pick:hover,.gsel:hover{border-color:var(--accent)}
+  #grpbox{display:inline-flex;gap:6px;align-items:center}
+  #grpbox .gsel{padding:7px 8px;font-size:13px}
   .search{flex:1;min-width:200px;max-width:380px;display:flex;align-items:center;
     background:#fff;border:1px solid var(--line);border-radius:8px;padding:0 10px}
   .search input{flex:1;background:none;border:0;color:var(--txt);font-size:15px;padding:10px 8px;outline:none}
@@ -43,6 +45,10 @@
   tr.grp td{background:var(--grp);font-weight:700;font-size:13px;
     text-transform:uppercase;letter-spacing:.5px;border-left:3px solid var(--accent)}
   tr.grp td span{color:var(--dim);font-weight:400;margin-left:8px}
+  tr.grp.l1 td{background:#ededed}
+  tr.grp.l2 td{background:#f3f3f3;font-size:12px;padding-left:26px}
+  tr.grp.l3 td{background:#f9f9f9;font-size:12px;padding-left:40px}
+  td.plc{color:var(--dim);width:40px;text-align:right;padding-right:14px}
   td.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
   mark{background:var(--accent);color:#fff;border-radius:2px;padding:0 1px}
   .empty{padding:40px 16px;text-align:center;color:var(--dim)}
@@ -59,7 +65,11 @@
       <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
       <input id="q" type="search" placeholder="Поиск по фамилии, нагруднику…" autocomplete="off">
     </label>
-    <select id="groupby" title="Группировка" style="display:none"></select>
+    <span id="grpbox" style="display:none">
+      <select id="gb1" class="gsel" title="Группировка"></select>
+      <select id="gb2" class="gsel" style="display:none"></select>
+      <select id="gb3" class="gsel" style="display:none"></select>
+    </span>
     <span class="meta" id="count"></span>
   </div>
 </header>
@@ -128,7 +138,8 @@ function showView(v){
 
 function liveChrome(on){
   document.querySelector(".search").style.display = on?"none":"";
-  if(on){ const gb=document.getElementById("groupby"); if(gb) gb.style.display="none"; }
+  if(on){ const gb=document.getElementById("grpbox"); if(gb) gb.style.display="none"; }
+  else { const gb=document.getElementById("grpbox"); if(gb && HEAD.length) gb.style.display=""; }
   document.querySelector(".wrap").style.display = on?"none":"";
   const live=document.getElementById("live");
   live.style.display = on?"block":"none";
@@ -211,21 +222,62 @@ function numKey(s){ s=String(s).trim().replace(/\.$/,"");
   if(s.includes(":")){ const p=s.split(":").map(Number); return p.reduce((a,b)=>a*60+(b||0),0); }
   return parseFloat(s.replace(",","."))||0; }
 
+const g1=()=>document.getElementById("gb1"), g2=()=>document.getElementById("gb2"), g3=()=>document.getElementById("gb3");
+
 function render(){
   detect(); SORT={col:DEFCOL,dir:1};
+  const opts='<option value="-1">— нет —</option>'+HEAD.map((h,i)=>'<option value="'+i+'">'+esc(h)+'</option>').join("");
+  [g1(),g2(),g3()].forEach(s=>{ s.innerHTML=opts; s.value="-1"; s.onchange=onGroup; });
+  g1().value = GENDER>=0 ? String(GENDER) : "-1";          // по умолчанию — по полу, если есть
+  document.getElementById("grpbox").style.display="";
+  syncLevels();
+  document.getElementById("q").oninput=draw;
+  draw();
+}
+function onGroup(){ syncLevels(); draw(); }
+function syncLevels(){                                       // показываем уровень N, только если задан N-1
+  const v1=+g1().value;
+  g2().style.display = v1>=0 ? "" : "none"; if(v1<0) g2().value="-1";
+  const v2=+g2().value;
+  g3().style.display = v2>=0 ? "" : "none"; if(v2<0) g3().value="-1";
+}
+
+function buildHead(grouping){
   const head=document.getElementById("head"); head.innerHTML="";
+  if(grouping){ const th=document.createElement("th"); th.textContent="#"; th.style.cursor="default"; head.appendChild(th); }
   HEAD.forEach((h,i)=>{ const th=document.createElement("th");
     th.innerHTML=h+' <span class="ar"></span>';
     th.onclick=()=>{ SORT.dir=SORT.col===i?-SORT.dir:1; SORT.col=i; draw(); };
     head.appendChild(th); });
-  const gb=document.getElementById("groupby");
-  gb.innerHTML='<option value="-1">Без группировки</option>'+
-    HEAD.map((h,i)=>'<option value="'+i+'">по: '+esc(h)+'</option>').join("");
-  gb.value = GENDER>=0 ? String(GENDER) : "-1";
-  gb.style.display="";
-  gb.onchange=draw;
-  document.getElementById("q").oninput=draw;
-  draw();
+}
+
+// ключ/подпись/порядок группы для колонки col
+function groupKey(col, raw){
+  if(col===GENDER){ const gi=genInfo(raw); return {key:gi.o+"|"+gi.t, label:gi.t, ord:gi.o, raw}; }
+  return {key:(raw||"—"), label:(raw||"—"), ord:null, raw};
+}
+// рекурсивно: вложенные заголовки категорий, в самой глубокой — сортировка и место (1,2,3…)
+function renderGroup(rows, cols, depth, frag, TOTAL, q){
+  if(cols.length===0){
+    rows.sort(cmp); let n=0;
+    rows.forEach(r=>{ const place = rowStatus(r) ? "" : String(++n)+"."; frag.appendChild(rowEl(r,q,place)); });
+    return;
+  }
+  const col=cols[0], g={};
+  rows.forEach(r=>{ const gi=groupKey(col, String(r[col]??"").trim());
+    (g[gi.key]=g[gi.key]||{label:gi.label,ord:gi.ord,raw:gi.raw,rows:[]}).rows.push(r); });
+  Object.values(g).sort((a,b)=>{
+    if(a.ord!=null||b.ord!=null) return (a.ord??99)-(b.ord??99);
+    const ae=a.label==="—", be=b.label==="—"; if(ae!==be) return ae?1:-1;
+    if(isNum(a.raw)&&isNum(b.raw)) return numKey(a.raw)-numKey(b.raw);
+    return a.label.localeCompare(b.label,"ru");
+  }).forEach(gr=>{
+    const tr=document.createElement("tr"); tr.className="grp l"+(depth+1);
+    const td=document.createElement("td"); td.colSpan=TOTAL;
+    td.innerHTML=esc(HEAD[col])+': '+esc(gr.label)+' <span>'+gr.rows.length+'</span>';
+    tr.appendChild(td); frag.appendChild(tr);
+    renderGroup(gr.rows, cols.slice(1), depth+1, frag, TOTAL, q);
+  });
 }
 
 function cmp(a,b){
@@ -244,34 +296,18 @@ function cmp(a,b){
 function draw(){
   const q=document.getElementById("q").value.trim().toLowerCase();
   let rows=q?ROWS.filter(r=>r.some(c=>String(c).toLowerCase().includes(q))):ROWS.slice();
+
+  const groupCols=[...new Set([+g1().value,+g2().value,+g3().value].filter(v=>v>=0))];
+  const grouping=groupCols.length>0;
+  buildHead(grouping);
   document.querySelectorAll("#head .ar").forEach((el,i)=> el.textContent=i===SORT.col?(SORT.dir>0?"▲":"▼"):"");
 
   const body=document.getElementById("body"); body.innerHTML="";
   const frag=document.createDocumentFragment();
-  const gCol = +(document.getElementById("groupby").value);   // -1 = без группировки
+  const TOTAL=HEAD.length+(grouping?1:0);
 
-  if(gCol>=0){
-    const g={};
-    rows.forEach(r=>{
-      const raw=String(r[gCol]??"").trim();
-      let key,label,ord;
-      if(gCol===GENDER){ const gi=genInfo(raw); key=gi.o+"|"+gi.t; label=gi.t; ord=gi.o; }
-      else { label=raw||"—"; key=label; ord=null; }
-      (g[key]=g[key]||{label,ord,raw,rows:[]}).rows.push(r);
-    });
-    Object.values(g).sort((a,b)=>{
-      if(a.ord!=null||b.ord!=null) return (a.ord??99)-(b.ord??99);
-      const ae=a.label==="—", be=b.label==="—"; if(ae!==be) return ae?1:-1;   // пусто вниз
-      if(isNum(a.raw)&&isNum(b.raw)) return numKey(a.raw)-numKey(b.raw);        // числа по возр.
-      return a.label.localeCompare(b.label,"ru");
-    }).forEach(gr=>{ gr.rows.sort(cmp);
-      const tr=document.createElement("tr"); tr.className="grp";
-      const td=document.createElement("td"); td.colSpan=HEAD.length;
-      td.innerHTML=esc(gr.label)+' <span>'+gr.rows.length+'</span>'; tr.appendChild(td); frag.appendChild(tr);
-      gr.rows.forEach(r=>frag.appendChild(rowEl(r,q))); });
-  } else {
-    rows.sort(cmp); rows.forEach(r=>frag.appendChild(rowEl(r,q)));
-  }
+  if(grouping){ renderGroup(rows, groupCols, 0, frag, TOTAL, q); }
+  else { rows.sort(cmp); rows.forEach(r=>frag.appendChild(rowEl(r,q,null))); }
   body.appendChild(frag);
 
   document.getElementById("count").textContent=rows.length+" из "+ROWS.length;
@@ -279,7 +315,8 @@ function draw(){
   if(!rows.length) document.getElementById("empty").textContent="Ничего не найдено";
 }
 
-function rowEl(r,q){ const tr=document.createElement("tr");
+function rowEl(r,q,place){ const tr=document.createElement("tr");
+  if(place!=null){ const td=document.createElement("td"); td.className="num plc"; td.textContent=place; tr.appendChild(td); }
   r.forEach(cell=>{ const td=document.createElement("td");
     if(isNum(cell)) td.className="num";
     td.innerHTML=q?hl(String(cell),q):esc(String(cell)); tr.appendChild(td); });
