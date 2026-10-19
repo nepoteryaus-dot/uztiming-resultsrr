@@ -231,10 +231,18 @@ function render(){
   detect(); SORT={col:DEFCOL,dir:1};
   const opts='<option value="-1">— нет —</option>'+HEAD.map((h,i)=>'<option value="'+i+'">'+esc(h)+'</option>').join("");
   [g1(),g2(),g3()].forEach(s=>{ s.innerHTML=opts; s.value="-1"; s.onchange=onGroup; });
-  // применяем группировку из манифеста (имена колонок), иначе — по полу
+  // группировка: 1) из манифеста; 2) авто-зеркало RR (Contest › Пол › Возр.группа); 3) пол
   const byName = n => HEAD.findIndex(h=>String(h).toLowerCase()===String(n).toLowerCase());
   let lv = DEFGROUP.map(byName).filter(i=>i>=0);
-  if(!lv.length && GENDER>=0) lv=[GENDER];
+  if(!lv.length){
+    const auto=[];
+    const contest=findCol(/^(contest|дистанция|distance|race|зачет|зачёт|wave|старт)$/i);
+    const agec=findCol(/^(agegroup|age.?group|возраст|категория|category|group)$/i);
+    if(contest>=0) auto.push(contest);
+    if(GENDER>=0)  auto.push(GENDER);
+    if(agec>=0 && agec!==GENDER) auto.push(agec);
+    lv = auto.length ? auto.slice(0,3) : (GENDER>=0?[GENDER]:[]);
+  }
   if(lv[0]!=null) g1().value=String(lv[0]);
   if(lv[1]!=null) g2().value=String(lv[1]);
   if(lv[2]!=null) g3().value=String(lv[2]);
