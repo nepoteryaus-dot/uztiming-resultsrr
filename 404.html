@@ -1,9 +1,13 @@
 <!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
 <title>Результаты — UZTiming</title>
 <script>
-  // красивый путь /<slug> -> /?e=<slug> (GitHub Pages не умеет rewrite, делаем через 404)
-  var p = location.pathname.replace(/^\/+/,"").replace(/\/+$/,"");
+  // /<...>/<slug> -> .../?e=<slug>  (работает и на github.io, и на кастомном домене)
+  var parts = location.pathname.replace(/\/+$/,"").split("/").filter(Boolean);
+  var base = "/";
+  // project pages: первый сегмент — имя репозитория
+  if (location.hostname.endsWith("github.io") && parts.length) { base = "/" + parts.shift() + "/"; }
+  var slug = parts.length ? parts[parts.length-1] : "";
   var params = new URLSearchParams(location.search);
-  if (p) params.set("e", p);
-  location.replace("/?" + params.toString() + location.hash);
+  if (slug && !/\.(html?|php|json)$/i.test(slug)) params.set("e", slug);
+  location.replace(base + "?" + params.toString() + location.hash);
 </script></head><body>Переход…</body></html>
