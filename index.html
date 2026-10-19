@@ -84,7 +84,7 @@
 
 <script>
 let ROWS=[], HEAD=[], SORT={col:0,dir:1};
-let GENDER=-1, DEFCOL=0, MANIFEST=null;
+let GENDER=-1, DEFCOL=0, PLACE=-1, MANIFEST=null;
 const pick=document.getElementById("pick");
 const ADMIN = new URLSearchParams(location.search).get("admin")==="1";  // меню группировки видно только с ?admin=1
 let DEFGROUP=[];                                                         // группировка по умолчанию из манифеста (имена колонок)
@@ -207,7 +207,9 @@ function detect(){
       if(vals.length && vals.length<=4 && vals.every(v=>/^(m|f|w|м|ж|male|female|муж|жен)$/.test(v))){ GENDER=i; break; }
     }
   }
-  let c=findCol(/rank|место|place|поз|pos/i);
+  PLACE=findCol(/^(pl|pos|rank|место|поз|place|#|№)$/i);   // колонка места/ранга (как в RR)
+  if(PLACE<0) PLACE=findCol(/rank|место|place|поз/i);
+  let c=PLACE;
   if(c<0) c=findCol(/result|результат|finish|финиш|chip|gun|time|время|итог/i);
   DEFCOL=c<0?0:c;
 }
@@ -217,12 +219,12 @@ function genInfo(v){ v=String(v).trim().toLowerCase();
   if(["f","w","female","жен","ж","woman","women"].includes(v)) return {o:1,t:"Женщины"};
   return {o:2,t:(String(v)||"—")}; }
 
-const STATUS=/^(dns|dnf|dsq|dq|lap|nc|dnc)$/i;
-function isStatus(s){ return STATUS.test(String(s).trim().replace(/[.\s]+$/,"")); }
+const STATUS=/^(dns|dnf|dsq|dq|lap|nc|dnc|n\/?a|n\.a\.?)$/i;
+function isStatus(s){ return STATUS.test(String(s).trim().replace(/\s+/g,"")); }
 function rowStatus(r){ return r.some(c=>isStatus(c)); }
 function isNum(s){ s=String(s).trim().replace(/\.$/,""); return /^-?[\d:.,]+$/.test(s) && /\d/.test(s); }
 function numKey(s){ s=String(s).trim().replace(/\.$/,"");
-  if(s.includes(":")){ const p=s.split(":").map(Number); return p.reduce((a,b)=>a*60+(b||0),0); }
+  if(s.includes(":")){ const p=s.split(":").map(x=>parseFloat(String(x).replace(",",".")) ||0); return p.reduce((a,b)=>a*60+b,0); }
   return parseFloat(s.replace(",","."))||0; }
 
 const g1=()=>document.getElementById("gb1"), g2=()=>document.getElementById("gb2"), g3=()=>document.getElementById("gb3");
@@ -259,9 +261,10 @@ function syncLevels(){                                       // показыва
   g3().style.display = v2>=0 ? "" : "none"; if(v2<0) g3().value="-1";
 }
 
+function synthRank(grouping){ return grouping && PLACE<0; }   // своё место рисуем только если в данных нет колонки места
 function buildHead(grouping){
   const head=document.getElementById("head"); head.innerHTML="";
-  if(grouping){ const th=document.createElement("th"); th.textContent="#"; th.style.cursor="default"; head.appendChild(th); }
+  if(synthRank(grouping)){ const th=document.createElement("th"); th.textContent="#"; th.style.cursor="default"; head.appendChild(th); }
   HEAD.forEach((h,i)=>{ const th=document.createElement("th");
     th.innerHTML=h+' <span class="ar"></span>';
     th.onclick=()=>{ SORT.dir=SORT.col===i?-SORT.dir:1; SORT.col=i; draw(); };
@@ -277,7 +280,7 @@ function groupKey(col, raw){
 function renderGroup(rows, cols, depth, frag, TOTAL, q){
   if(cols.length===0){
     rows.sort(cmp); let n=0;
-    rows.forEach(r=>{ const place = rowStatus(r) ? "" : String(++n)+"."; frag.appendChild(rowEl(r,q,place)); });
+    rows.forEach(r=>{ const place = (PLACE>=0) ? null : (rowStatus(r) ? "" : String(++n)+"."); frag.appendChild(rowEl(r,q,place)); });
     return;
   }
   const col=cols[0], g={};
@@ -321,7 +324,7 @@ function draw(){
 
   const body=document.getElementById("body"); body.innerHTML="";
   const frag=document.createDocumentFragment();
-  const TOTAL=HEAD.length+(grouping?1:0);
+  const TOTAL=HEAD.length+(synthRank(grouping)?1:0);
 
   if(grouping){ renderGroup(rows, groupCols, 0, frag, TOTAL, q); }
   else { rows.sort(cmp); rows.forEach(r=>frag.appendChild(rowEl(r,q,null))); }
