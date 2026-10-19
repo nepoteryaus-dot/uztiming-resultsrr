@@ -202,15 +202,48 @@ function load(file){
     .catch(e=>show("Не удалось загрузить "+file+" ("+e.message+")"));
 }
 
+let EXTGROUP=[];   // группировка, заданная самим отчётом RR (JSON ext)
+
 function parse(j){
+  EXTGROUP=[];
+  // формат "JSON" — массив объектов
   if(Array.isArray(j)){ ROWS=[]; HEAD=[];
     if(j.length){ HEAD=Object.keys(j[0]); ROWS=j.map(o=>HEAD.map(k=>o[k]??"")); } return; }
+  // формат "JSON ext" — {List:{Fields,Orders,HeadLine…}, Data:{группы}, DataFields:[…]}
+  if(j && j.List && j.Data && Array.isArray(j.DataFields)){ parseExt(j); return; }
+  // запасной {list,data}
   const list=j.list||j.List||{}, fields=list.Fields||list.fields||[];
   HEAD=fields.length?fields.map(f=>f.Label ?? f.label ?? f.Expression ?? f.Name ?? ""):[];
   let data=j.data ?? j.Data ?? [];
   if(data && !Array.isArray(data)) data=Object.values(data).flat();
   ROWS=(data||[]).filter(r=>Array.isArray(r));
   if(!HEAD.length && ROWS.length) HEAD=ROWS[0].map((_,i)=>"Кол."+(i+1));
+}
+
+function parseExt(j){
+  const fields=j.List.Fields||[], df=j.DataFields||[];
+  HEAD=fields.map((f,i)=>{ const L=(f.Label||"").trim();
+    if(L) return L;
+    if(/AGEGROUP/i.test(f.Expression||"")) return "AG";
+    return "К"+(i+1); });
+  const colIdx=fields.map(f=>df.indexOf(f.Expression));
+  ROWS=[];
+  const hashNum=k=>{ const m=String(k).match(/^#(\d+)/); return m?+m[1]:0; };
+  (function walk(node){
+    if(Array.isArray(node)){ node.forEach(row=> ROWS.push(colIdx.map(ci=> (ci>=0&&ci<row.length)?row[ci]:""))); }
+    else if(node && typeof node==="object"){ Object.keys(node).sort((a,b)=>hashNum(a)-hashNum(b)).forEach(k=>walk(node[k])); }
+  })(j.Data);
+  // заголовки
+  const h1=(j.List.HeadLine1||"").trim(), h2=(j.List.HeadLine2||"").trim();
+  if(h1){ document.getElementById("subtitle").textContent=h1+(h2?" · "+h2:""); document.title=h1+" — UZTiming"; }
+  // группировка из самого отчёта (Orders с Grouping>0)
+  const g=[]; (j.List.Orders||[]).forEach(o=>{ if(+o.Grouping>0){
+    const e=String(o.Expression||"");
+    if(/contest/i.test(e)) g.push("Contest");
+    else if(/malefemale|sex|gender|пол/i.test(e)) g.push("Gender");
+    else { const f=fields.find(f=>f.Expression===o.Expression); if(f&&f.Label) g.push(f.Label); }
+  }});
+  EXTGROUP=[...new Set(g)].slice(0,3);
 }
 
 function findCol(re){ return HEAD.findIndex(h=>re.test(String(h))); }
@@ -249,9 +282,10 @@ function render(){
   detect(); SORT={col:DEFCOL,dir:1};
   const opts='<option value="-1">— нет —</option>'+HEAD.map((h,i)=>'<option value="'+i+'">'+esc(h)+'</option>').join("");
   [g1(),g2(),g3()].forEach(s=>{ s.innerHTML=opts; s.value="-1"; s.onchange=onGroup; });
-  // группировка: 1) из манифеста; 2) авто-зеркало RR (Contest › Пол › Возр.группа); 3) пол
+  // группировка: 1) из манифеста; 2) из самого отчёта RR (JSON ext); 3) авто; 4) пол
   const byName = n => HEAD.findIndex(h=>String(h).toLowerCase()===String(n).toLowerCase());
   let lv = DEFGROUP.map(byName).filter(i=>i>=0);
+  if(!lv.length && EXTGROUP.length) lv = EXTGROUP.map(byName).filter(i=>i>=0);
   if(!lv.length){
     const auto=[];
     const contest=findCol(/^(contest|дистанция|distance|race|зачет|зачёт|wave|старт)$/i);
@@ -299,14 +333,15 @@ function renderGroup(rows, cols, depth, frag, TOTAL, q){
     rows.forEach(r=>{ const place = (PLACE>=0) ? null : (rowStatus(r) ? "" : String(++n)+"."); frag.appendChild(rowEl(r,q,place)); });
     return;
   }
-  const col=cols[0], g={};
+  const col=cols[0], g={}; let seq=0;
   rows.forEach(r=>{ const gi=groupKey(col, String(r[col]??"").trim());
-    (g[gi.key]=g[gi.key]||{label:gi.label,ord:gi.ord,raw:gi.raw,rows:[]}).rows.push(r); });
+    if(!g[gi.key]){ g[gi.key]={label:gi.label,ord:gi.ord,raw:gi.raw,seq:seq++,rows:[]}; }
+    g[gi.key].rows.push(r); });
   Object.values(g).sort((a,b)=>{
     if(a.ord!=null||b.ord!=null) return (a.ord??99)-(b.ord??99);
-    const ae=a.label==="—", be=b.label==="—"; if(ae!==be) return ae?1:-1;
-    if(isNum(a.raw)&&isNum(b.raw)) return numKey(a.raw)-numKey(b.raw);
-    return a.label.localeCompare(b.label,"ru");
+    const ae=a.label==="—", be=b.label==="—"; if(ae!==be) return ae?1:-1;      // пусто вниз
+    if(isNum(a.raw)&&isNum(b.raw)) return numKey(a.raw)-numKey(b.raw);          // числа по возр.
+    return a.seq-b.seq;                                                         // иначе — порядок RR (как в данных)
   }).forEach(gr=>{
     const tr=document.createElement("tr"); tr.className="grp l"+(depth+1);
     const td=document.createElement("td"); td.colSpan=TOTAL;
