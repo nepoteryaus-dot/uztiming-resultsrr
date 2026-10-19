@@ -295,6 +295,7 @@ function render(){
     if(agec>=0 && agec!==GENDER) auto.push(agec);
     lv = auto.length ? auto.slice(0,3) : (GENDER>=0?[GENDER]:[]);
   }
+  lv = [...new Set(lv.filter(i=>i>=0 && i!==PLACE))].slice(0,3);   // место (Pl) — не уровень группировки
   if(lv[0]!=null) g1().value=String(lv[0]);
   if(lv[1]!=null) g2().value=String(lv[1]);
   if(lv[2]!=null) g3().value=String(lv[2]);
@@ -368,7 +369,7 @@ function draw(){
   const q=document.getElementById("q").value.trim().toLowerCase();
   let rows=q?ROWS.filter(r=>r.some(c=>String(c).toLowerCase().includes(q))):ROWS.slice();
 
-  const groupCols=[...new Set([+g1().value,+g2().value,+g3().value].filter(v=>v>=0))];
+  const groupCols=[...new Set([+g1().value,+g2().value,+g3().value].filter(v=>v>=0 && v!==PLACE))];
   const grouping=groupCols.length>0;
   buildHead(grouping);
   document.querySelectorAll("#head .ar").forEach((el,i)=> el.textContent=i===SORT.col?(SORT.dir>0?"▲":"▼"):"");
