@@ -204,11 +204,17 @@ function load(file){
 
 let EXTGROUP=[];   // группировка, заданная самим отчётом RR (JSON ext)
 
+// чистим кривые/служебные заголовки колонок (напр. формула AGEGROUP -> AG)
+function cleanHead(h){ h=String(h);
+  if(/AGEGROUP/i.test(h)) return "AG";
+  if(/^\s*(if|iif)\s*\(/i.test(h)) return "AG";
+  return h; }
+
 function parse(j){
   EXTGROUP=[];
   // формат "JSON" — массив объектов
   if(Array.isArray(j)){ ROWS=[]; HEAD=[];
-    if(j.length){ HEAD=Object.keys(j[0]); ROWS=j.map(o=>HEAD.map(k=>o[k]??"")); } return; }
+    if(j.length){ HEAD=Object.keys(j[0]).map(cleanHead); ROWS=j.map(o=>Object.keys(j[0]).map(k=>o[k]??"")); } return; }
   // формат "JSON ext" — {List:{Fields,Orders,HeadLine…}, Data:{группы}, DataFields:[…]}
   if(j && j.List && j.Data && Array.isArray(j.DataFields)){ parseExt(j); return; }
   // запасной {list,data}
