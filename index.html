@@ -33,6 +33,10 @@
   .wrap{overflow:auto}
   #live{display:none}
   #live iframe{width:100%;height:calc(100vh - 62px);border:0;display:block;background:#fff}
+  #live{padding:0}
+  #live table{border-collapse:collapse;width:100%}
+  #live > *{max-width:100%}
+  #live{overflow:auto;padding:12px 16px}
   table{border-collapse:collapse;width:100%;min-width:600px}
   th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
   thead th{position:sticky;top:0;background:#fafafa;color:var(--dim);
@@ -84,7 +88,7 @@
 
 <script>
 let ROWS=[], HEAD=[], SORT={col:0,dir:1};
-let GENDER=-1, DEFCOL=0, PLACE=-1, MANIFEST=null;
+let GENDER=-1, DEFCOL=0, PLACE=-1, MANIFEST=null, HTMLMAP={};
 const pick=document.getElementById("pick");
 const ADMIN = new URLSearchParams(location.search).get("admin")==="1";  // меню группировки видно только с ?admin=1
 let DEFGROUP=[];                                                         // группировка по умолчанию из манифеста (имена колонок)
@@ -120,6 +124,7 @@ else loadManifest(EVENT)
 
     const liveAvail = m.mode==="live" && (m.embed||"").trim()!=="";
     const lists = m.lists||[];
+    HTMLMAP={}; lists.forEach(l=>{ if(l.html || /\.html$/i.test(l.file)) HTMLMAP[l.file]=true; });
     const opts = [];
     if(liveAvail) opts.push({label:"🔴 LIVE", file:"__live__"});
     lists.forEach(l=>opts.push({label:l.label, file:l.file}));
@@ -136,7 +141,18 @@ else loadManifest(EVENT)
 
 function showView(v){
   if(v==="__live__"){ liveChrome(true); renderLive(MANIFEST); }
+  else if(HTMLMAP[v]){ liveChrome(true); renderMirror(v); }   // HTML-зеркало отчёта RR
   else { liveChrome(false); load(v); }
+}
+
+// показать статичный HTML-снимок отчёта RR как есть
+function renderMirror(file){
+  document.getElementById("count").textContent="";
+  const box=document.getElementById("live"); box.innerHTML='<div class="empty">Загрузка…</div>';
+  fetch("data/"+file,{cache:"no-store"})
+    .then(r=>{ if(!r.ok) throw new Error(r.status); return r.text(); })
+    .then(html=>{ box.innerHTML=""; injectEmbed(box, html); })
+    .catch(e=>{ box.innerHTML='<div class="empty">Не удалось загрузить отчёт ('+e.message+')</div>'; });
 }
 
 function liveChrome(on){
